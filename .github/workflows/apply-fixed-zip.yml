@@ -11,11 +11,12 @@ on:
         uses: actions/checkout@v4
         name: Check ZIP file 
         run: | 
-        if [ ! -f "Chat-app-render-fixed-1.zip" ]; then 
-             echo "ERROR: ZIP file repository root mein nahi mili."
-               exit 1 
+        if 
+        [ ! -f "Chat-app-render-fixed-1.zip" ]; then 
+       echo "ERROR: ZIP file repository root mein nahi mili."
+          exit 1 
                fi 
-               - name: Extract ZIP file
+     - name: Extract ZIP file
                run: | 
                mkdir -p /tmp/fixed
                unzip -q Chat-app-render-fixed-1.zip -d /tmp/fixed 
