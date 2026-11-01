@@ -1,0 +1,30 @@
+name: Apply Fixed Chat App ZIP
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update-project:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract and apply ZIP
+        run: |
+          unzip -q Chat-app-render-fixed.zip -d /tmp/fixed
+          cp -a /tmp/fixed/Chat-app-main/. .
+
+      - name: Commit updated files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m "Apply fixed Chat app files"
+            git push
+          fi
