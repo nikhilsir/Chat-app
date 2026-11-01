@@ -17,7 +17,7 @@ export function SocketProvider({ children }) {
       return;
     }
 
-    const s = io('http://localhost:5000', {
+    const s = io(undefined, {
       auth: { token },
       transports: ['websocket', 'polling']
     });

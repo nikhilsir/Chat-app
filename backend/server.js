@@ -17,7 +17,8 @@ const server = http.createServer(app);
 const allowedOrigins = [
   'http://localhost:5173',
   'http://127.0.0.1:5173',
-  process.env.FRONTEND_URL
+  process.env.FRONTEND_URL,
+  process.env.RENDER_EXTERNAL_URL
 ].filter(Boolean);
 
 const io = new Server(server, {
@@ -109,6 +110,11 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// Serve the Vite-built frontend from this same Render web service.
+const frontendDist = path.join(__dirname, '..', 'frontend', 'dist');
+app.get('/healthz', (req, res) => res.status(200).json({ status: 'ok' }));
+app.use(express.static(frontendDist));
 
 // Multer for media (temporary - later move to Cloudinary)
 const storage = multer.diskStorage({
@@ -538,6 +544,16 @@ io.on('connection', async (socket) => {
       await pool.query('UPDATE users SET online = false WHERE id = $1', [userId]);
     } catch (e) {}
     io.emit('user:online', { userId, online: false });
+  });
+});
+
+// SPA fallback: direct visits to /, /login, /signup, etc. should load React.
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api/')) {
+    return res.status(404).json({ error: 'API route not found' });
+  }
+  res.sendFile(path.join(frontendDist, 'index.html'), (err) => {
+    if (err) next(err);
   });
 });
 

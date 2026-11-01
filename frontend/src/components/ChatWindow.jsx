@@ -109,14 +109,14 @@ export default function ChatWindow({
                 )}
                 {m.mediaUrl && m.mediaType === 'image' && (
                   <img
-                    src={`http://localhost:5000${m.mediaUrl}`}
+                    src={m.mediaUrl}
                     alt="media"
                     style={{ maxWidth: 240, borderRadius: 8, marginBottom: 4, display: 'block' }}
                   />
                 )}
                 {m.mediaUrl && m.mediaType === 'video' && (
                   <video
-                    src={`http://localhost:5000${m.mediaUrl}`}
+                    src={m.mediaUrl}
                     controls
                     style={{ maxWidth: 260, borderRadius: 8, marginBottom: 4 }}
                   />
