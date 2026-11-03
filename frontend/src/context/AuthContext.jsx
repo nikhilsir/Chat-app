@@ -1,4 +1,12 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useMemo
+} from 'react';
+
 import axios from 'axios';
 
 const AuthContext = createContext(null);
@@ -7,39 +15,78 @@ const API = '/api';
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
-  const [token, setToken] = useState(localStorage.getItem('token'));
+  const [token, setToken] = useState(
+    () => localStorage.getItem('token')
+  );
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (token) {
-      axios.get(`${API}/auth/me`, {
-        headers: { Authorization: `Bearer ${token}` }
-      })
-        .then(res => setUser(res.data))
-        .catch(() => {
+    let cancelled = false;
+
+    const verifyUser = async () => {
+      if (!token) {
+        setUser(null);
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+
+      try {
+        const response = await axios.get(`${API}/auth/me`, {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        });
+
+        if (!cancelled) {
+          setUser(response.data);
+        }
+      } catch (error) {
+        if (!cancelled) {
           localStorage.removeItem('token');
           setToken(null);
-        })
-        .finally(() => setLoading(false));
-    } else {
-      setLoading(false);
-    }
+          setUser(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    verifyUser();
+
+    return () => {
+      cancelled = true;
+    };
   }, [token]);
 
   const login = async (username, password) => {
-    const res = await axios.post(`${API}/auth/login`, { username, password });
-    localStorage.setItem('token', res.data.token);
-    setToken(res.data.token);
-    setUser(res.data.user);
-    return res.data;
+    const response = await axios.post(`${API}/auth/login`, {
+      username,
+      password
+    });
+
+    localStorage.setItem('token', response.data.token);
+    setUser(response.data.user);
+    setToken(response.data.token);
+
+    return response.data;
   };
 
   const signup = async (username, password, displayName) => {
-    const res = await axios.post(`${API}/auth/signup`, { username, password, displayName });
-    localStorage.setItem('token', res.data.token);
-    setToken(res.data.token);
-    setUser(res.data.user);
-    return res.data;
+    const response = await axios.post(`${API}/auth/signup`, {
+      username,
+      password,
+      displayName
+    });
+
+    localStorage.setItem('token', response.data.token);
+    setUser(response.data.user);
+    setToken(response.data.token);
+
+    return response.data;
   };
 
   const logout = () => {
@@ -48,8 +95,18 @@ export function AuthProvider({ children }) {
     setUser(null);
   };
 
+  const value = useMemo(() => ({
+    user,
+    token,
+    loading,
+    login,
+    signup,
+    logout,
+    API
+  }), [user, token, loading]);
+
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, signup, logout, API }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );
