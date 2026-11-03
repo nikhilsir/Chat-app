@@ -91,6 +91,9 @@ async function initDB() {
       )
     `);
 
+    // Soft-delete support ("Delete for everyone")
+    await pool.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS deleted BOOLEAN DEFAULT false`);
+
     // Indexes for speed
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_messages_chat ON messages(chat_id, created_at)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_chat_members_user ON chat_members(user_id)`);
@@ -411,7 +414,7 @@ app.get('/api/chats/:chatId/messages', authMiddleware, async (req, res) => {
     if (member.rows.length === 0) return res.status(403).json({ error: 'Not a member' });
 
     const result = await pool.query(`
-      SELECT id, chat_id, sender_id, sender_name, text, media_url, media_type, created_at
+      SELECT id, chat_id, sender_id, sender_name, text, media_url, media_type, deleted, created_at
       FROM messages
       WHERE chat_id = $1
       ORDER BY created_at ASC
@@ -426,6 +429,7 @@ app.get('/api/chats/:chatId/messages', authMiddleware, async (req, res) => {
       text: m.text,
       mediaUrl: m.media_url,
       mediaType: m.media_type,
+      deleted: m.deleted,
       createdAt: m.created_at
     })));
   } catch (err) {
@@ -438,6 +442,75 @@ app.post('/api/upload', authMiddleware, upload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file' });
   const url = `/uploads/${req.file.filename}`;
   res.json({ url, filename: req.file.filename, mimetype: req.file.mimetype });
+});
+
+// ============ PROFILE / SETTINGS ============
+app.patch('/api/users/me', authMiddleware, async (req, res) => {
+  try {
+    const { displayName } = req.body;
+    if (!displayName || !String(displayName).trim()) {
+      return res.status(400).json({ error: 'Display name required' });
+    }
+    const name = String(displayName).trim().slice(0, 100);
+    const updated = await pool.query(
+      'UPDATE users SET display_name = $1 WHERE id = $2 RETURNING id, username, display_name, avatar',
+      [name, req.user.id]
+    );
+    if (updated.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+    const u = updated.rows[0];
+    const user = { id: u.id, username: u.username, displayName: u.display_name, avatar: u.avatar };
+    io.emit('user:updated', user);
+    res.json(user);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/auth/change-password', authMiddleware, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: 'Both passwords required' });
+    }
+    if (String(newPassword).length < 4) {
+      return res.status(400).json({ error: 'New password must be at least 4 characters' });
+    }
+    const found = await pool.query('SELECT password FROM users WHERE id = $1', [req.user.id]);
+    if (found.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+    const match = await bcrypt.compare(currentPassword, found.rows[0].password);
+    if (!match) return res.status(400).json({ error: 'Current password is wrong' });
+    const hashed = await bcrypt.hash(newPassword, 10);
+    await pool.query('UPDATE users SET password = $1 WHERE id = $2', [hashed, req.user.id]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ============ DELETE FOR EVERYONE ============
+app.delete('/api/chats/:chatId/messages/:messageId', authMiddleware, async (req, res) => {
+  try {
+    const { chatId, messageId } = req.params;
+    const msg = await pool.query(
+      'SELECT id, sender_id, chat_id FROM messages WHERE id = $1 AND chat_id = $2',
+      [messageId, chatId]
+    );
+    if (msg.rows.length === 0) return res.status(404).json({ error: 'Message not found' });
+    if (msg.rows[0].sender_id !== req.user.id) {
+      return res.status(403).json({ error: 'You can only delete your own messages' });
+    }
+    await pool.query(
+      `UPDATE messages SET deleted = true, text = '', media_url = NULL, media_type = NULL WHERE id = $1`,
+      [messageId]
+    );
+    io.to(chatId).emit('message:deleted', { messageId, chatId });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
 });
 
 // ============ SOCKET.IO ============
@@ -482,6 +555,10 @@ io.on('connection', async (socket) => {
     if (!chatId) return;
 
     try {
+      // Ensure sender is in the room (auto-join on connect is async —
+      // this closes the race where a fast first message misses the room)
+      socket.join(chatId);
+
       // Check membership
       const member = await pool.query(
         'SELECT 1 FROM chat_members WHERE chat_id = $1 AND user_id = $2',

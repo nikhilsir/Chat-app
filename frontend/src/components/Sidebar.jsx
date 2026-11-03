@@ -1,20 +1,21 @@
 import { useState } from 'react';
+import {
+  Search, MessageCircle, Users, UsersRound, LogOut, Settings, Check,
+} from 'lucide-react';
 
 export default function Sidebar({
   user, chats, users, onlineMap, activeChat,
-  onSelectChat, onStartPrivate, onCreateGroup, onLogout
+  onSelectChat, onStartPrivate, onCreateGroup, onLogout, onOpenSettings,
 }) {
-  const [tab, setTab] = useState('chats'); // chats | users | group
+  const [tab, setTab] = useState('chats');
   const [search, setSearch] = useState('');
   const [groupName, setGroupName] = useState('');
   const [selectedMembers, setSelectedMembers] = useState([]);
 
-  const filteredChats = chats.filter(c =>
-    c.name?.toLowerCase().includes(search.toLowerCase())
-  );
+  const q = search.toLowerCase();
+  const filteredChats = chats.filter(c => c.name?.toLowerCase().includes(q));
   const filteredUsers = users.filter(u =>
-    u.displayName?.toLowerCase().includes(search.toLowerCase()) ||
-    u.username?.toLowerCase().includes(search.toLowerCase())
+    u.displayName?.toLowerCase().includes(q) || u.username?.toLowerCase().includes(q)
   );
 
   const toggleMember = (id) => {
@@ -31,73 +32,85 @@ export default function Sidebar({
     setTab('chats');
   };
 
+  const previewOf = (c) => {
+    if (!c.lastMessage) return 'No messages yet';
+    if (c.lastMessage.deleted) return '🚫 Deleted message';
+    if (c.lastMessage.mediaUrl) return `📎 ${c.lastMessage.mediaType === 'image' ? 'Photo' : c.lastMessage.mediaType === 'video' ? 'Video' : 'Audio'}`
+    return c.lastMessage.text || 'No messages yet';
+  };
+
   return (
-    <div style={styles.sidebar}>
+    <div className="sb">
       {/* Header */}
-      <div style={styles.header}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={styles.avatar}>{user?.displayName?.[0]?.toUpperCase() || '?'}</div>
-          <div>
-            <div style={{ fontWeight: 600 }}>{user?.displayName}</div>
-            <div style={{ fontSize: 12, color: '#8696a0' }}>@{user?.username}</div>
+      <div className="sb-head">
+        <div className="sb-identity">
+          <div className="avatar">{user?.displayName?.[0]?.toUpperCase() || '?'}</div>
+          <div style={{ minWidth: 0 }}>
+            <div className="sb-name">{user?.displayName}</div>
+            <div className="sb-username">@{user?.username}</div>
           </div>
         </div>
-        <button onClick={onLogout} style={styles.logoutBtn} title="Logout">⏻</button>
+        <button className="icon-btn" onClick={onOpenSettings} title="Settings" aria-label="Settings">
+          <Settings size={19} />
+        </button>
+        <button className="icon-btn danger" onClick={onLogout} title="Logout" aria-label="Logout">
+          <LogOut size={19} />
+        </button>
       </div>
 
       {/* Search */}
-      <div style={styles.searchBox}>
-        <input
-          style={styles.searchInput}
-          placeholder="Search..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-        />
+      <div className="sb-search">
+        <div className="field">
+          <Search size={16} />
+          <input placeholder="Search chats & people…" value={search} onChange={e => setSearch(e.target.value)} />
+        </div>
       </div>
 
       {/* Tabs */}
-      <div style={styles.tabs}>
-        <button style={tab === 'chats' ? styles.tabActive : styles.tab} onClick={() => setTab('chats')}>
-          Chats
+      <div className="sb-tabs">
+        <button className={`sb-tab ${tab === 'chats' ? 'active' : ''}`} onClick={() => setTab('chats')}>
+          <MessageCircle size={15} /> Chats
         </button>
-        <button style={tab === 'users' ? styles.tabActive : styles.tab} onClick={() => setTab('users')}>
-          Users
+        <button className={`sb-tab ${tab === 'users' ? 'active' : ''}`} onClick={() => setTab('users')}>
+          <Users size={15} /> People
         </button>
-        <button style={tab === 'group' ? styles.tabActive : styles.tab} onClick={() => setTab('group')}>
-          New Group
+        <button className={`sb-tab ${tab === 'group' ? 'active' : ''}`} onClick={() => setTab('group')}>
+          <UsersRound size={15} /> Group
         </button>
       </div>
 
       {/* Content */}
-      <div style={styles.list}>
+      <div className="sb-list">
         {tab === 'chats' && (
           filteredChats.length === 0 ? (
-            <div style={styles.empty}>No chats yet. Start a conversation!</div>
+            <div className="sb-empty">
+              <MessageCircle size={34} strokeWidth={1.5} />
+              <div>No chats yet.<br />Open the People tab to start one!</div>
+            </div>
           ) : (
-            filteredChats.map(c => (
+            filteredChats.map((c, i) => (
               <div
                 key={c.id}
-                style={{
-                  ...styles.chatItem,
-                  background: activeChat?.id === c.id ? '#2a3942' : 'transparent'
-                }}
+                className={`sb-item ${activeChat?.id === c.id ? 'active' : ''}`}
+                style={{ animationDelay: `${Math.min(i * 40, 240)}ms` }}
                 onClick={() => onSelectChat(c)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={e => e.key === 'Enter' && onSelectChat(c)}
               >
-                <div style={styles.avatar}>
-                  {c.type === 'group' ? '👥' : (c.name?.[0]?.toUpperCase() || '?')}
+                <div className={`avatar ${c.type === 'group' ? 'group' : ''}`}>
+                  {c.type === 'group' ? <UsersRound size={18} /> : (c.name?.[0]?.toUpperCase() || '?')}
                 </div>
-                <div style={{ flex: 1, overflow: 'hidden' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ fontWeight: 500 }}>{c.name}</span>
+                <div className="sb-item-body">
+                  <div className="sb-item-top">
+                    <span className="sb-item-name">{c.name}</span>
                     {c.lastMessage && (
-                      <span style={{ fontSize: 11, color: '#8696a0' }}>
+                      <span className="sb-item-time">
                         {new Date(c.lastMessage.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </span>
                     )}
                   </div>
-                  <div style={{ fontSize: 13, color: '#8696a0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {c.lastMessage?.text || (c.lastMessage?.mediaUrl ? '📎 Media' : 'No messages')}
-                  </div>
+                  <div className="sb-item-preview">{previewOf(c)}</div>
                 </div>
               </div>
             ))
@@ -105,54 +118,72 @@ export default function Sidebar({
         )}
 
         {tab === 'users' && (
-          filteredUsers.map(u => (
-            <div
-              key={u.id}
-              style={styles.chatItem}
-              onClick={() => onStartPrivate(u.id)}
-            >
-              <div style={{ position: 'relative' }}>
-                <div style={styles.avatar}>{u.displayName?.[0]?.toUpperCase()}</div>
-                {onlineMap[u.id] && <div style={styles.onlineDot} />}
-              </div>
-              <div>
-                <div style={{ fontWeight: 500 }}>{u.displayName}</div>
-                <div style={{ fontSize: 12, color: '#8696a0' }}>
-                  {onlineMap[u.id] ? 'Online' : 'Offline'} · @{u.username}
+          filteredUsers.length === 0 ? (
+            <div className="sb-empty">
+              <Users size={34} strokeWidth={1.5} />
+              <div>No people found.</div>
+            </div>
+          ) : (
+            filteredUsers.map((u, i) => (
+              <div
+                key={u.id}
+                className="sb-item"
+                style={{ animationDelay: `${Math.min(i * 40, 240)}ms` }}
+                onClick={() => onStartPrivate(u.id)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={e => e.key === 'Enter' && onStartPrivate(u.id)}
+              >
+                <div style={{ position: 'relative' }}>
+                  <div className="avatar sm">{u.displayName?.[0]?.toUpperCase()}</div>
+                  {onlineMap[u.id] && <span className="online-dot" />}
+                </div>
+                <div className="sb-item-body">
+                  <div className="sb-item-name">{u.displayName}</div>
+                  <div className="sb-item-preview sb-online-label">
+                    <span className="status-dot" style={{ background: onlineMap[u.id] ? 'var(--ok)' : 'var(--muted)', width: 6, height: 6 }} />
+                    {onlineMap[u.id] ? 'Online now' : 'Offline'} · @{u.username}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))
+            ))
+          )
         )}
 
         {tab === 'group' && (
-          <div style={{ padding: 16 }}>
-            <input
-              style={{ ...styles.searchInput, marginBottom: 12 }}
-              placeholder="Group name"
-              value={groupName}
-              onChange={e => setGroupName(e.target.value)}
-            />
-            <div style={{ fontSize: 13, color: '#8696a0', marginBottom: 8 }}>Select members:</div>
-            {users.map(u => (
-              <label key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={selectedMembers.includes(u.id)}
-                  onChange={() => toggleMember(u.id)}
-                />
-                <span>{u.displayName}</span>
-              </label>
-            ))}
+          <div className="group-form">
+            <div>
+              <div className="form-label" style={{ marginBottom: 6 }}>Group name</div>
+              <input className="form-input" placeholder="e.g. Friends Forever" value={groupName} onChange={e => setGroupName(e.target.value)} />
+            </div>
+            <div>
+              <div className="form-label" style={{ marginBottom: 6 }}>Select members</div>
+              {users.map(u => (
+                <label
+                  key={u.id}
+                  className={`member-row ${selectedMembers.includes(u.id) ? 'selected' : ''}`}
+                >
+                  <span className="check-box"><Check size={13} strokeWidth={3.2} /></span>
+                  <div className="avatar sm">{u.displayName?.[0]?.toUpperCase()}</div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13.5 }}>{u.displayName}</div>
+                    <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>@{u.username}</div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={selectedMembers.includes(u.id)}
+                    onChange={() => toggleMember(u.id)}
+                    style={{ display: 'none' }}
+                  />
+                </label>
+              ))}
+            </div>
             <button
-              style={{
-                ...styles.createBtn,
-                opacity: groupName && selectedMembers.length ? 1 : 0.5
-              }}
+              className="primary-btn"
               onClick={handleCreateGroup}
-              disabled={!groupName || selectedMembers.length === 0}
+              disabled={!groupName.trim() || selectedMembers.length === 0}
             >
-              Create Group
+              <UsersRound size={17} /> Create Group
             </button>
           </div>
         )}
@@ -160,99 +191,3 @@ export default function Sidebar({
     </div>
   );
 }
-
-const styles = {
-  sidebar: {
-    width: 340,
-    background: '#111b21',
-    borderRight: '1px solid #222d34',
-    display: 'flex',
-    flexDirection: 'column',
-    height: '100%',
-  },
-  header: {
-    padding: '16px 20px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    background: '#202c33',
-  },
-  avatar: {
-    width: 42,
-    height: 42,
-    borderRadius: '50%',
-    background: '#00a884',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontWeight: 600,
-    color: '#111b21',
-    fontSize: 18,
-  },
-  logoutBtn: {
-    fontSize: 20,
-    color: '#8696a0',
-    padding: 8,
-  },
-  searchBox: { padding: '10px 16px' },
-  searchInput: {
-    width: '100%',
-    background: '#202c33',
-    padding: '10px 14px',
-    borderRadius: 8,
-    border: '1px solid #2a3942',
-  },
-  tabs: {
-    display: 'flex',
-    borderBottom: '1px solid #222d34',
-  },
-  tab: {
-    flex: 1,
-    padding: '12px',
-    color: '#8696a0',
-    fontSize: 14,
-  },
-  tabActive: {
-    flex: 1,
-    padding: '12px',
-    color: '#00a884',
-    fontSize: 14,
-    borderBottom: '2px solid #00a884',
-  },
-  list: {
-    flex: 1,
-    overflowY: 'auto',
-  },
-  chatItem: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 12,
-    padding: '12px 16px',
-    cursor: 'pointer',
-  },
-  onlineDot: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 12,
-    height: 12,
-    borderRadius: '50%',
-    background: '#00a884',
-    border: '2px solid #111b21',
-  },
-  empty: {
-    padding: 40,
-    textAlign: 'center',
-    color: '#8696a0',
-    fontSize: 14,
-  },
-  createBtn: {
-    width: '100%',
-    background: '#00a884',
-    color: '#111b21',
-    padding: '12px',
-    borderRadius: 8,
-    fontWeight: 600,
-    marginTop: 16,
-  },
-};

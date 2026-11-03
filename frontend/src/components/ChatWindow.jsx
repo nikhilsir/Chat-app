@@ -1,63 +1,47 @@
-
 import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
+import {
+  ArrowLeft, Send, Paperclip, Loader2, MessageCircle, Trash2,
+  MessageSquareOff, FileAudio, Sparkles,
+} from 'lucide-react';
 
 export default function ChatWindow({
-  chat,
-  messages,
-  currentUser,
-  typingUsers,
-  onSend,
-  socket,
-  token,
-  API
+  chat, messages, currentUser, typingUsers, onSend, onDeleteMessage,
+  socket, token, API, onBack,
 }) {
   const [text, setText] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(null); // messageId
 
   const messagesEndRef = useRef(null);
   const typingTimeout = useRef(null);
   const fileInputRef = useRef(null);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({
-      behavior: 'smooth'
-    });
-  }, [messages]);
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, typingUsers]);
 
   useEffect(() => {
     return () => clearTimeout(typingTimeout.current);
   }, []);
 
+  useEffect(() => { setConfirmDelete(null); }, [chat?.id]);
+
   const handleTyping = val => {
     setText(val);
-
     if (!socket || !chat) return;
-
-    socket.emit('typing:start', {
-      chatId: chat.id
-    });
-
+    socket.emit('typing:start', { chatId: chat.id });
     clearTimeout(typingTimeout.current);
-
     typingTimeout.current = setTimeout(() => {
-      socket.emit('typing:stop', {
-        chatId: chat.id
-      });
+      socket.emit('typing:stop', { chatId: chat.id });
     }, 1500);
   };
 
   const handleSend = () => {
     if (!text.trim() || uploading) return;
-
     onSend(text.trim());
     setText('');
-
-    if (socket && chat) {
-      socket.emit('typing:stop', {
-        chatId: chat.id
-      });
-    }
+    if (socket && chat) socket.emit('typing:stop', { chatId: chat.id });
   };
 
   const handleKeyDown = e => {
@@ -69,184 +53,157 @@ export default function ChatWindow({
 
   const handleFile = async e => {
     const file = e.target.files?.[0];
-
     if (!file || !chat) return;
-
     setUploading(true);
-
     try {
       const form = new FormData();
       form.append('file', file);
-
-      const res = await axios.post(
-        `${API}/upload`,
-        form,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'multipart/form-data'
-          }
-        }
-      );
-
-      const isImage = file.type.startsWith('image/');
-      const isVideo = file.type.startsWith('video/');
-
-      onSend(
-        '',
-        res.data.url,
-        isImage ? 'image' : isVideo ? 'video' : 'file'
-      );
-
+      const res = await axios.post(`${API}/upload`, form, {
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'multipart/form-data' },
+      });
+      const type = file.type.startsWith('image/') ? 'image'
+        : file.type.startsWith('video/') ? 'video'
+        : file.type.startsWith('audio/') ? 'audio' : 'file';
+      onSend('', res.data.url, type);
     } catch (err) {
       console.error(err);
       alert('Upload failed. Please try again.');
-
     } finally {
       setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
 
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
+  const askDelete = (messageId) => setConfirmDelete(messageId);
+
+  const doDelete = async (messageId) => {
+    setConfirmDelete(null);
+    try {
+      await axios.delete(
+        `${API}/chats/${chat.id}/messages/${messageId}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (onDeleteMessage) onDeleteMessage(messageId, chat.id);
+    } catch (err) {
+      console.error(err);
+      alert(err.response?.data?.error || 'Delete failed');
     }
   };
 
   if (!chat) {
     return (
-      <div style={styles.empty}>
-        <div style={styles.emptyIcon}>✉</div>
-
-        <h2 style={styles.emptyTitle}>
-          Welcome to <span style={{ color: '#a78bfa' }}>ChatApp</span>
-        </h2>
-
-        <p style={styles.emptyText}>
-          Select a conversation or find someone to start chatting.
-        </p>
-
-        <div style={styles.emptyBadge}>
-          <span style={{ color: '#2dd4bf' }}>●</span>
-          Your space to connect
+      <div className="cw-empty">
+        <div className="auth-blob b1" />
+        <div className="auth-blob b2" />
+        <div className="cw-empty-icon anim-pop"><MessageCircle size={42} strokeWidth={1.8} /></div>
+        <h2 className="anim-fade-up">Welcome to <span>ChatApp</span></h2>
+        <p className="anim-fade-up">Select a conversation, or open the People tab to start a new one.</p>
+        <div className="cw-badge anim-fade-up">
+          <Sparkles size={14} /> Real-time · Fast · Beautiful
         </div>
       </div>
     );
   }
 
-  const typingText = Object.values(typingUsers || {})
-    .filter(Boolean)
-    .join(', ');
+  const typingText = Object.values(typingUsers || {}).filter(Boolean).join(', ');
 
   return (
-    <div style={styles.window}>
-
-      <header style={styles.header}>
-        <div style={styles.avatar}>
-          {chat.type === 'group'
-            ? '♧'
-            : (chat.name?.[0]?.toUpperCase() || '?')}
+    <div className="cw">
+      {/* Header */}
+      <header className="cw-header">
+        <button className="mobile-back-btn" onClick={onBack} aria-label="Back to chats">
+          <ArrowLeft size={21} />
+        </button>
+        <div className={`avatar ${chat.type === 'group' ? 'group' : ''}`}>
+          {chat.type === 'group' ? '#' : (chat.name?.[0]?.toUpperCase() || '?')}
         </div>
-
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={styles.chatName}>
-            {chat.name || 'Conversation'}
-          </div>
-
-          <div style={styles.chatStatus}>
-            <span style={styles.statusDot} />
-
-            {chat.type === 'group'
-              ? `${chat.members?.length || 0} members`
-              : 'Direct message'}
+        <div className="cw-head-body">
+          <div className="cw-chat-name">{chat.name || 'Conversation'}</div>
+          <div className="cw-chat-status">
+            {typingText ? (
+              <span className="cw-typing-status">{typingText} is typing…</span>
+            ) : (
+              <>
+                <span className="status-dot" />
+                {chat.type === 'group' ? `${chat.members?.length || 0} members` : 'Direct message'}
+              </>
+            )}
           </div>
         </div>
-
-        <div style={styles.headerTag}>CHAT</div>
       </header>
 
-      <div style={styles.messages}>
+      {/* Messages */}
+      <div className="cw-messages">
         {messages.map(m => {
           const isMe = m.senderId === currentUser?.id;
 
-          return (
-            <div
-              key={m.id}
-              style={{
-                ...styles.msgRow,
-                justifyContent: isMe ? 'flex-end' : 'flex-start'
-              }}
-            >
-              <div
-                style={{
-                  ...styles.bubble,
-                  background: isMe
-                    ? 'linear-gradient(135deg, #6d4aff, #8b5cf6)'
-                    : '#18223a',
-
-                  border: isMe
-                    ? '1px solid rgba(196,181,253,0.22)'
-                    : '1px solid rgba(148,163,184,0.12)',
-
-                  borderBottomRightRadius: isMe ? 5 : 16,
-                  borderBottomLeftRadius: isMe ? 16 : 5
-                }}
-              >
-
-                {!isMe && chat.type === 'group' && (
-                  <div style={styles.senderName}>
-                    {m.senderName || 'Member'}
+          if (m.deleted) {
+            return (
+              <div key={m.id} className={`msg-row ${isMe ? 'me' : 'them'}`}>
+                <div className="msg-bubble" style={{ opacity: 0.75 }}>
+                  <div className="msg-deleted">
+                    <MessageSquareOff size={14} />
+                    This message was deleted
                   </div>
+                  <div className="msg-time">
+                    {new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </div>
+                </div>
+              </div>
+            );
+          }
+
+          return (
+            <div key={m.id} className={`msg-row ${isMe ? 'me' : 'them'}`}>
+              {isMe && confirmDelete === m.id && (
+                <button
+                  className="msg-del-btn"
+                  style={{ opacity: 1, color: 'var(--danger)', borderColor: 'var(--danger)' }}
+                  onClick={() => doDelete(m.id)}
+                  title="Delete for everyone"
+                  aria-label="Confirm delete for everyone"
+                >
+                  <Trash2 size={15} />
+                </button>
+              )}
+
+              <div className="msg-bubble">
+                {!isMe && chat.type === 'group' && (
+                  <div className="msg-sender">{m.senderName || 'Member'}</div>
                 )}
 
                 {m.mediaUrl && m.mediaType === 'image' && (
-                  <img
-                    src={m.mediaUrl}
-                    alt="Shared attachment"
-                    loading="lazy"
-                    style={styles.image}
-                  />
+                  <img src={m.mediaUrl} alt="Shared attachment" loading="lazy" className="msg-image" />
                 )}
-
                 {m.mediaUrl && m.mediaType === 'video' && (
-                  <video
-                    src={m.mediaUrl}
-                    controls
-                    style={styles.video}
-                  />
+                  <video src={m.mediaUrl} controls className="msg-video" />
                 )}
-
-                {m.mediaUrl && m.mediaType === 'file' && (
-                  <a
-                    href={m.mediaUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={styles.fileLink}
-                  >
-                    ↗ Open attachment
+                {m.mediaUrl && m.mediaType === 'audio' && (
+                  <audio src={m.mediaUrl} controls className="msg-audio" />
+                )}
+                {m.mediaUrl && (m.mediaType === 'file' || !['image', 'video', 'audio'].includes(m.mediaType)) && (
+                  <a href={m.mediaUrl} target="_blank" rel="noreferrer" className="msg-file">
+                    <FileAudio size={17} /> Open attachment
                   </a>
                 )}
 
-                {m.text && (
-                  <div
-                    style={{
-                      whiteSpace: 'pre-wrap',
-                      overflowWrap: 'anywhere'
-                    }}
-                  >
-                    {m.text}
-                  </div>
-                )}
+                {m.text && <div className="msg-text">{m.text}</div>}
 
-                <div style={styles.time}>
-                  {new Date(m.createdAt).toLocaleTimeString(
-                    [],
-                    {
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    }
-                  )}
+                <div className="msg-time">
+                  {new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </div>
-
               </div>
+
+              {isMe && confirmDelete !== m.id && (
+                <button
+                  className="msg-del-btn"
+                  onClick={() => askDelete(m.id)}
+                  title="Delete for everyone"
+                  aria-label="Delete for everyone"
+                >
+                  <Trash2 size={15} />
+                </button>
+              )}
             </div>
           );
         })}
@@ -254,311 +211,90 @@ export default function ChatWindow({
         <div ref={messagesEndRef} />
       </div>
 
+      {/* Typing */}
       {typingText && (
-        <div style={styles.typing}>
-          <span style={{ color: '#2dd4bf' }}>●</span>
-          <span>{typingText} typing...</span>
+        <div className="typing-row">
+          <span className="typing-dots"><i /><i /><i /></span>
+          {typingText} is typing…
         </div>
       )}
 
-      <div style={styles.inputArea}>
-
+      {/* Composer */}
+      <div className="cw-composer">
         <button
           type="button"
-          style={{
-            ...styles.attachBtn,
-            opacity: uploading ? 0.5 : 1
-          }}
+          className="icon-btn attach-btn"
           onClick={() => fileInputRef.current?.click()}
           disabled={uploading}
           aria-label="Attach a file"
-          title="Attach image or video"
+          title="Attach photo, video or audio"
         >
-          {uploading ? '…' : '＋'}
+          {uploading ? <Loader2 size={19} className="spin" /> : <Paperclip size={19} />}
         </button>
 
         <input
           type="file"
           ref={fileInputRef}
           style={{ display: 'none' }}
-          accept="image/*,video/*"
+          accept="image/*,video/*,audio/*"
           onChange={handleFile}
         />
 
-        <input
-          style={styles.input}
-          placeholder="Write a message..."
-          value={text}
-          onChange={e => handleTyping(e.target.value)}
-          onKeyDown={handleKeyDown}
-          aria-label="Message"
-        />
+        <div className="field">
+          <input
+            placeholder="Write a message…"
+            value={text}
+            onChange={e => handleTyping(e.target.value)}
+            onKeyDown={handleKeyDown}
+            aria-label="Message"
+            maxLength={4000}
+          />
+        </div>
 
         <button
           type="button"
-          style={{
-            ...styles.sendBtn,
-            opacity: text.trim() && !uploading ? 1 : 0.65
-          }}
+          className="send-btn"
           onClick={handleSend}
           disabled={!text.trim() || uploading}
           aria-label="Send message"
-          title="Send message"
+          title="Send"
         >
-          ➤
+          <Send size={18} />
         </button>
-
       </div>
+
+      {/* Delete confirmation strip */}
+      {confirmDelete && (
+        <div
+          style={{
+            position: 'absolute', left: 0, right: 0, bottom: 78,
+            display: 'flex', justifyContent: 'center', zIndex: 20,
+            padding: '0 14px',
+          }}
+        >
+          <div
+            className="auth-error anim-pop"
+            style={{ background: 'var(--panel)', alignItems: 'center', gap: 12 }}
+          >
+            <MessageSquareOff size={16} />
+            Delete this message for everyone?
+            <button
+              className="save-btn"
+              style={{ height: 32, padding: '0 12px', fontSize: 12.5 }}
+              onClick={() => doDelete(confirmDelete)}
+            >
+              Yes, delete
+            </button>
+            <button
+              className="save-btn"
+              style={{ height: 32, padding: '0 12px', fontSize: 12.5, background: 'var(--panel-2)' }}
+              onClick={() => setConfirmDelete(null)}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
-
-const styles = {
-  empty: {
-    flex: 1,
-    minWidth: 0,
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    textAlign: 'center',
-    padding: 24,
-    background: '#0b1020',
-    color: '#f1f5f9'
-  },
-
-  emptyIcon: {
-    width: 82,
-    height: 82,
-    borderRadius: 26,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: 38,
-    color: '#c4b5fd',
-    background: 'linear-gradient(135deg, #211b42, #18223a)',
-    border: '1px solid rgba(139,92,246,0.28)',
-    boxShadow: '0 12px 40px rgba(0,0,0,0.18)'
-  },
-
-  emptyTitle: {
-    fontSize: 26,
-    margin: '24px 0 8px',
-    letterSpacing: '-0.7px'
-  },
-
-  emptyText: {
-    color: '#94a3b8',
-    fontSize: 14,
-    lineHeight: 1.7,
-    maxWidth: 330
-  },
-
-  emptyBadge: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 18,
-    padding: '10px 14px',
-    borderRadius: 30,
-    border: '1px solid rgba(148,163,184,0.15)',
-    background: '#11182b',
-    color: '#cbd5e1',
-    fontSize: 12
-  },
-
-  window: {
-    flex: 1,
-    minWidth: 0,
-    minHeight: 0,
-    display: 'flex',
-    flexDirection: 'column',
-    background: '#0b1020',
-    color: '#f1f5f9',
-    overflow: 'hidden'
-  },
-
-  header: {
-    minHeight: 76,
-    boxSizing: 'border-box',
-    padding: '14px 22px',
-    background: '#11182b',
-    display: 'flex',
-    alignItems: 'center',
-    gap: 13,
-    borderBottom: '1px solid rgba(148,163,184,0.14)',
-    boxShadow: '0 4px 18px rgba(0,0,0,0.08)'
-  },
-
-  avatar: {
-    width: 45,
-    height: 45,
-    minWidth: 45,
-    borderRadius: 15,
-    background: 'linear-gradient(135deg, #8b5cf6, #5b4bdb)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontWeight: 800,
-    fontSize: 18,
-    color: '#fff',
-    boxShadow: '0 5px 16px rgba(139,92,246,0.2)'
-  },
-
-  chatName: {
-    fontWeight: 800,
-    fontSize: 15,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap'
-  },
-
-  chatStatus: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 7,
-    marginTop: 5,
-    color: '#94a3b8',
-    fontSize: 12
-  },
-
-  statusDot: {
-    width: 7,
-    height: 7,
-    borderRadius: '50%',
-    background: '#2dd4bf'
-  },
-
-  headerTag: {
-    padding: '6px 10px',
-    borderRadius: 8,
-    background: 'rgba(139,92,246,0.15)',
-    color: '#c4b5fd',
-    fontSize: 10,
-    fontWeight: 800,
-    letterSpacing: 1
-  },
-
-  messages: {
-    flex: 1,
-    minHeight: 0,
-    overflowY: 'auto',
-    padding: '20px 22px',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 12
-  },
-
-  msgRow: {
-    display: 'flex',
-    width: '100%'
-  },
-
-  bubble: {
-    maxWidth: 'min(75%, 520px)',
-    padding: '11px 14px',
-    borderRadius: 16,
-    fontSize: 14,
-    lineHeight: 1.6,
-    color: '#f8fafc',
-    overflowWrap: 'anywhere',
-    boxShadow: '0 3px 12px rgba(0,0,0,0.12)'
-  },
-
-  senderName: {
-    fontSize: 11,
-    fontWeight: 800,
-    color: '#c4b5fd',
-    marginBottom: 5
-  },
-
-  image: {
-    display: 'block',
-    maxWidth: '100%',
-    maxHeight: 280,
-    objectFit: 'contain',
-    borderRadius: 10,
-    marginBottom: 7
-  },
-
-  video: {
-    display: 'block',
-    width: '100%',
-    maxWidth: 360,
-    maxHeight: 280,
-    borderRadius: 10,
-    marginBottom: 7
-  },
-
-  fileLink: {
-    display: 'inline-block',
-    color: '#ddd6fe',
-    textDecoration: 'underline',
-    fontWeight: 700,
-    marginBottom: 5
-  },
-
-  time: {
-    textAlign: 'right',
-    fontSize: 10,
-    color: 'rgba(226,232,240,0.7)',
-    marginTop: 5
-  },
-
-  typing: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-    padding: '8px 22px',
-    color: '#94a3b8',
-    fontSize: 12
-  },
-
-  inputArea: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 10,
-    padding: '14px 18px',
-    background: '#11182b',
-    borderTop: '1px solid rgba(148,163,184,0.14)'
-  },
-
-  attachBtn: {
-    width: 42,
-    height: 42,
-    minWidth: 42,
-    border: '1px solid rgba(148,163,184,0.18)',
-    borderRadius: 13,
-    background: '#18223a',
-    color: '#c4b5fd',
-    fontSize: 25,
-    cursor: 'pointer'
-  },
-
-  input: {
-    flex: 1,
-    minWidth: 0,
-    height: 44,
-    boxSizing: 'border-box',
-    padding: '0 15px',
-    border: '1px solid rgba(148,163,184,0.16)',
-    borderRadius: 13,
-    outline: 'none',
-    background: '#18223a',
-    color: '#f1f5f9',
-    fontSize: 14
-  },
-
-  sendBtn: {
-    width: 44,
-    height: 44,
-    minWidth: 44,
-    border: 'none',
-    borderRadius: 13,
-    background: 'linear-gradient(135deg, #6d4aff, #8b5cf6)',
-    color: '#fff',
-    fontSize: 19,
-    fontWeight: 800,
-    cursor: 'pointer'
-  }
-};
