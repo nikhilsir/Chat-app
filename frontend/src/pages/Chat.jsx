@@ -50,13 +50,14 @@ setMobileShowChat(true);
 const startPrivateChat = async userId => {
 try {
 const response = await axios.post(
-${API}/chats/private,
-{ userId },
-{
-headers: {
-Authorization: Bearer ${token}
-}
-}
+const response = await axios.post(
+  `${API}/chats/private`,
+  { userId },
+  {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  }
 );
 
 const chat = response.data; setChats(previousChats => { const existing = previousChats.find( item => item.id === chat.id ); if (existing) { return [ { ...existing, ...chat }, ...previousChats.filter(item => item.id !== chat.id) ]; } return [chat, ...previousChats]; }); selectChat(chat); if (socket) { socket.emit('chat:join', { chatId: chat.id }); } } catch (error) { console.error(error); }
