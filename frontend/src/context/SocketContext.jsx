@@ -1,3 +1,4 @@
+
 import { createContext, useContext, useEffect, useState } from 'react';
 import { io } from 'socket.io-client';
 import { useAuth } from './AuthContext';
@@ -10,25 +11,32 @@ export function SocketProvider({ children }) {
 
   useEffect(() => {
     if (!token) {
-      if (socket) {
-        socket.disconnect();
-        setSocket(null);
-      }
+      setSocket(null);
       return;
     }
 
-    const s = io(undefined, {
+    const connection = io({
       auth: { token },
-      transports: ['websocket', 'polling']
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000
     });
 
-    s.on('connect', () => console.log('Socket connected'));
-    s.on('connect_error', (err) => console.error('Socket error:', err.message));
+    connection.on('connect', () => {
+      console.log('Socket connected:', connection.id);
+    });
 
-    setSocket(s);
+    connection.on('connect_error', error => {
+      console.error('Socket connection error:', error.message);
+    });
+
+    setSocket(connection);
 
     return () => {
-      s.disconnect();
+      connection.disconnect();
+      setSocket(current => current === connection ? null : current);
     };
   }, [token]);
 
